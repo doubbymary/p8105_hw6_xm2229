@@ -2,7 +2,7 @@
 title: "p8105_hw6_xm2229"
 author: "Xiaoyue Ma"
 date: "11/16/2019"
-output: html_document
+output: github_document
 ---
 
 ```{r setup, include=FALSE}
@@ -10,3 +10,69 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ## Problem 1
+
+Load and clean the data for regression analysis (i.e. convert numeric to factor where appropriate, check for missing data, etc.).
+
+```{r}
+library(tidyverse)
+raw_bw = read_csv("data/birthweight.csv")
+janitor::clean_names(raw_bw) %>%
+  ## check for missing values
+  skimr::skim()
+```
+
+convert some of the the numeric variables to factor variables as stated in the introduction.
+
+```{r}
+cleaned_bw = raw_bw %>%
+  mutate(babysex = case_when(babysex == 1 ~ "male", 
+                             babysex == 2 ~ "female"),
+         frace = case_when(frace == 1 ~ "white",
+                           frace == 2 ~ "black",
+                           frace == 3 ~ "asian",
+                           frace == 4 ~ "puerto rican", 
+                           frace == 8 ~ "other",
+                           frace == 9 ~ "unknown"),
+         malform = case_when(malform == 0 ~ "absent",
+                             malform == 1 ~ "present"),
+         mrace = case_when(mrace == 1 ~ "white",
+                           mrace == 2 ~ "black",
+                           mrace == 3 ~ "asian",
+                           mrace == 4 ~ "puerto rican", 
+                           mrace == 8 ~ "other")) %>%
+  mutate(babysex = forcats::fct_relevel(babysex, "male", "female"),
+         frace = forcats::fct_relevel(frace, "white", "black","asian","puerto rican", "other","unknow"),
+         malform = forcats::fct_relevel(malform, "absent", "present"),
+         mrace = forcats::fct_relevel(mrace, "white", "black", "asian", "puerto rican"))
+
+skimr::skim(cleaned_bw)
+```
+
+According to basic biology, it is hypothesized that the factors that might affect baby's birthweight are `bhead`, `blength`, `babysex`, `delwt`, `malform`, `mheight`, `smoken`, `wtgain`. From the plot below, we can see that there are a few extreme values that has very high residuals, which means that there are a few predictions that are off by a huge value.
+
+```{r}
+library('ggplot2')
+fit = lm(bwt ~ bhead + blength + babysex + delwt + malform + mheight + smoken + wtgain, data = cleaned_bw)
+
+modelr::add_predictions(cleaned_bw, fit) %>%
+  modelr::add_residuals(fit) %>%
+  ggplot(aes(x = pred, y = resid)) + geom_point() + labs(title = "A plot of Residual against Fitted value for the hypothesized model") + xlab("Fitted Value") + ylab("Residuals")
+```
+
+Compare your model to two others:
+
+* One using length at birth and gestational age as predictors (main effects only)
+* One using head circumference, length, sex, and all interactions (including the three-way interaction) between these
+
+The steps taken here is to use `crossv_mc` to split the dataset into training set and testing set and compare the RMSE to decide which one is better
+
+```{r}
+cv_df = modelr::crossv_mc(cleaned_bw, 1500)
+
+cv_df %>%
+  mutate(hypothsized = map(train, ~lm(bwt ~ bhead + blength + babysex + delwt + malform + mheight + smoken + wtgain, data = .x)),
+         bg = map(train, ~lm(bwt ~ blength + gaweeks, data = .x)),
+         interaction = map(train, ~lm(bwt ~ bhead + blength + babysex + bhead:blength + blength:babysex + bhead:babysex, data = .x)))
+  
+```
+
