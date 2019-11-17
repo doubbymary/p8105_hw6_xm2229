@@ -1,0 +1,12 @@
+---
+title: "p8105_hw6_xm2229"
+author: "Xiaoyue Ma"
+date: "11/16/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Problem 1
