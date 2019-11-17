@@ -87,7 +87,10 @@ cv_result %>%
     values_to =  "rmse",
     names_prefix = "rmse_") %>%
   mutate(model = fct_inorder(model)) %>%
-  ggplot(aes(x = model, y = rmse)) + geom_violin() + scale_x_discrete(labels = c("hypotheszied model", "2 factors model", "3-way interaction model")) + xlab("Models") + ylab("Root mean squared error")
+  ggplot(aes(x = model, y = rmse)) + geom_violin() + 
+  scale_x_discrete(labels = c("hypotheszied model", "2 factors model", "3-way interaction model")) + 
+  xlab("Models") + ylab("Root mean squared error") + 
+  labs(title = "Distribution of the RMSE of the 100 cv smaples by model")
 ```
 
 Moreover, we could also compare the mean RMSE of the 100 generated corss-validated samples for the three models in the following table. By verifying the table below, the hypothsized model has a lower RMSE on average.
@@ -105,3 +108,59 @@ cv_result %>%
 ```
 
 ## Problem 2
+
+download the weather dataset
+
+```{r}
+weather_df = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2017-01-01",
+    date_max = "2017-12-31") %>%
+  mutate(
+    name = recode(id, USW00094728 = "CentralPark_NY"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
+```
+
+Start to pull 5000 bootstrap samples from `weather_df`
+
+```{r}
+boot_weather = data_frame(strap_number = 1:5000,
+           strap_sample = rerun(5000, sample_frac(weather_df, replace=TRUE)))
+
+dim(boot_weather)
+```
+
+For each samples run regression `tmax ~ tmin` and extract $\hat{r}^2$ and $log(\hat{\beta_0} * \hat{\beta_1})$.
+
+```{r}
+results = boot_weather %>%
+  mutate(models = map(strap_sample, ~lm(tmax ~ tmin, data = .x)),
+         results_glance = map(models, broom::glance),
+         results_tidy = map(models, broom::tidy)) %>%
+  select(-strap_sample, -models) %>%
+  unnest() %>%
+  select(strap_number, r.squared, estimate) %>%
+  group_by(strap_number) %>%
+  summarise(r_squared = unique(r.squared),
+            log_prod = log(prod(estimate)))
+
+head(results) %>% knitr::kable()
+```
+
+
+Calcualte the 2.5% and 97.5% quantiles for column `r_squared` to get the 95% confidence interval for $\hat{r}^2$.
+
+```{r}
+quantile(results$r_squared, probs = c(0.025, 0.975))
+```
+
+Calcualte the 2.5% and 97.5% quantiles for column `log_prod` to get the 95% confidence interval for $log(\hat{\beta_0} * \hat{\beta_1})$.
+
+```{r}
+quantile(results$log_prod, probs = c(0.025, 0.975))
+```
+
