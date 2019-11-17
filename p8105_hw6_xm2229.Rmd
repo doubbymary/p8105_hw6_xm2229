@@ -64,15 +64,44 @@ Compare your model to two others:
 * One using length at birth and gestational age as predictors (main effects only)
 * One using head circumference, length, sex, and all interactions (including the three-way interaction) between these
 
-The steps taken here is to use `crossv_mc` to split the dataset into training set and testing set and compare the RMSE to decide which one is better
+The steps taken here is to use `crossv_mc` to split the dataset into training set and testing set and compare the RMSE (mean square error) to decide which one is better. According to the plot below, for the 100 cross validation samples generated randomly, the hypothsized model has overall the lowest root mean squared cross-validated prediction error. Therefore, the hypothsized model might be a better one.
 
 ```{r}
-cv_df = modelr::crossv_mc(cleaned_bw, 1500)
+cv_df = modelr::crossv_mc(cleaned_bw, 100) %>%
+  mutate(train = map(train, as_tibble),
+         test = map(test, as_tibble))
 
-cv_df %>%
+cv_result = cv_df %>%
   mutate(hypothsized = map(train, ~lm(bwt ~ bhead + blength + babysex + delwt + malform + mheight + smoken + wtgain, data = .x)),
          bg = map(train, ~lm(bwt ~ blength + gaweeks, data = .x)),
-         interaction = map(train, ~lm(bwt ~ bhead + blength + babysex + bhead:blength + blength:babysex + bhead:babysex, data = .x)))
+         interaction = map(train, ~lm(bwt ~ bhead + blength + babysex + bhead:blength + blength:babysex + bhead:babysex, data = .x))) %>%
+  mutate(rmse_hypothsized = map2_dbl(hypothsized, test, ~modelr::rmse(model = .x, data = .y)),
+         rmse_bg = map2_dbl(bg, test, ~modelr::rmse(model = .x, data = .y)),
+         rmse_interaction = map2_dbl(interaction, test, ~modelr::rmse(model = .x, data = .y)))
   
+cv_result %>%
+  select(starts_with("rmse")) %>%
+  pivot_longer(
+    everything(),
+    names_to = "model",
+    values_to =  "rmse",
+    names_prefix = "rmse_") %>%
+  mutate(model = fct_inorder(model)) %>%
+  ggplot(aes(x = model, y = rmse)) + geom_violin() + scale_x_discrete(labels = c("hypotheszied model", "2 factors model", "3-way interaction model")) + xlab("Models") + ylab("Root mean squared error")
 ```
 
+Moreover, we could also compare the mean RMSE of the 100 generated corss-validated samples for the three models in the following table. By verifying the table below, the hypothsized model has a lower RMSE on average.
+
+```{r}
+cv_result %>%
+  select(starts_with("rmse")) %>%
+  pivot_longer(
+    everything(),
+    names_to = "model",
+    values_to =  "rmse",
+    names_prefix = "rmse_") %>%
+  group_by(model) %>%
+  summarise(mean_rmse = mean(rmse)) %>% knitr::kable()
+```
+
+## Problem 2
